@@ -5,13 +5,12 @@ import dacite
 import curses
 from curses import wrapper
 from curses.textpad import Textbox, rectangle
-import time
 from enum import IntEnum
 import sys
 import copy
 import asyncio
 from desktop_notifier import DesktopNotifier
-import subprocess
+#test
 
 offset = 0
 
@@ -25,10 +24,6 @@ class ColumnType(IntEnum):
     requested_time = 2
     assigned_time = 3
 
-class TodoStatus(IntEnum):
-    uncompleted = 0
-    completed = 1
-    suspended = 2
 
 
 @dataclass
@@ -75,26 +70,16 @@ class SlotBlock:
 
 @dataclass
 class Config:
-    cursepath: str
-    projectpath: str
     default_minutes: int
     desclimit: int
     autosave: bool
-# sleep: list[float, float]
 
 
-@dataclass
-class Todo:
-    priority: float
-    description: str
-    status: int # todostatus...
-# suggested_time: int
 
 @dataclass
 class Mainclass:
     config: Config
     days: list[Day]
-    todolist: list[Todo]
 
 @dataclass
 class Row:
@@ -227,27 +212,7 @@ def template_to_day(template: Template, today)-> Day:
 
 
 
-def init_main() -> Mainclass:
-    default_template = Template(
-            "blank",
-            16 * 60,
-            7 * 60,
-            [],
-            )
-    
-    config = Config("")
-
-    
-    newmain = Mainclass(
-            config,
-            [default_template],
-            [new_day(config)]
-            )
-    return newmain
-
-
 def fetch_current_day(mainclass: Mainclass, offset=0) -> Day:
-    config = mainclass.config
     today = str((datetime.datetime.now() + datetime.timedelta(days=offset)).date())
 
     for day in mainclass.days:
@@ -345,59 +310,11 @@ def debuglol(screen, var):
     screen.getch()
 
 
-def load_curse_todos(cursepath):
-    todolist = [] 
-    with open(cursepath + "/todo", "r") as file:
-        for line in file:
-            priority = float(line[1])
-            if priority == 0:
-                priority = 5
-            if line[3] == ">":
-                description = line[45::].rstrip()
-            else:
-                description = line[4::].rstrip()
-            status = TodoStatus.uncompleted
-            todo = Todo(priority, 
-                    description, 
-                    status,
-                    )
-
-            todolist.append(todo)
-    return todolist
-
-def load_projects(projectpath):
-    subprocess.run("python /home/tor/docs/prog/py/projects/main.py update", shell=True)
-    time.sleep(0.2)
-    todolist = []
-    with open(projectpath) as f:
-        data = json.load(f)
-    projectlist = data["projects"]
-    for project in projectlist:
-        priority = project["priority"]
-        description = project["desc"]
-        status = TodoStatus.uncompleted
-        todo = Todo(priority,
-                description,
-                status,
-                )
-        todolist.append(todo)
-    return todolist
-
-def sort_todos(todolist):
-    sorted_todo = []
-    for i in range(10):
-        for todo in todolist:
-            if todo.priority == i:
-                sorted_todo.append(todo)
-    return sorted_todo
 
 
 
-def load_todos(config):
-    curse_todos   = [] #load_curse_todos(config.cursepath)
-    project_todos = [] #load_projects(config.projectpath)
-    all_todos = curse_todos + project_todos
-    return (sort_todos(all_todos))
+
+
 
 def edit_start_time(screen, day, index, num):
     while True:
@@ -532,23 +449,25 @@ def handle_main_keys(screen, row, column):
             if column.selected != column.maxindex:
                 column.selected += 1
             change = False
+        # insert new slot
         case "i":
             newslots(selected_day, row.selected)
             row.selected += 1
             row.bottom += 1
             calibrate_slots(selected_day)
+        # supposedly insert slot above current
         case "I":
             newslots(selected_day, row.selected)
             row.selected += 1
             row.bottom += 1
-            selected_day.slots[row.selected].description = mainclass.todolist[todoindex].description
-            todoindex = (todoindex + 1) % (len(mainclass.todolist))
             calibrate_slots(selected_day)
+        # begin task now
         case "b":
             selected_slot.start = current_minutes()
             selected_slot.fixed_time = True
             selected_day.slots[row.selected - 1].fixed_length = False 
             calibrate_slots(selected_day)
+        # duplicate task
         case "d":
             row.selected += 1
             row.bottom   += 1
@@ -571,23 +490,16 @@ def handle_main_keys(screen, row, column):
             calibrate_slots(selected_day)
         case "s":
             save_to_file(mainclass)
+        # go to current slot by time
         case "e":
             row.selected = row.current
         case "t":
             pass
-        #return Window.templates
+        # fill time or something
         case "z":
             selected_day.slots[row.selected].reqtime = selected_day.slots[row.selected].assigned
         case "x":
             split(screen, selected_day, row.selected)
-        case "o":
-            todoindex = (todoindex + 1) % len(mainclass.todolist)
-            selected_day.slots[row.selected].description = mainclass.todolist[todoindex].description
-        case "O":
-            todoindex -= 1
-            if todoindex == -1:
-                todoindex = len(mainclass.todolist) - 1
-            selected_day.slots[row.selected].description = mainclass.todolist[todoindex].description
 
         case "r":
             if row.selected:
@@ -683,8 +595,6 @@ def view_main(stdscr, mainclass):
     row = Row(0, None, None, 0)
     row.bottom = len(selected_day.slots) - 1
     
-    offset = 0
-    todoindex = 0
 
     stdscr.clear()
     curses.halfdelay(150)
@@ -697,21 +607,42 @@ def view_main(stdscr, mainclass):
 
 
 
+filename = 'db.json'
+content = """{
+"config": {
+	"default_minutes": 30,
+	"desclimit": 30,
+	"autosave": true
+},
+"days": []
 
-
-
+}
+"""
 
 try:
+    with open(filename, 'x') as file:
+        file.write(content)
+    print(f"Created a new file: {filename}")
+except FileExistsError:
+    print(f"File {filename} already exists.")
+
+
+
+
+
+loaded_dict = {}
+
+    
+try:
     with open('db.json') as f:
-        for line in f:
-            loaded_dict = json.loads(line)
+        loaded_dict = json.load(f)  # Use json.load instead of json.loads in a loop
     mainclass = dacite.from_dict(data_class=Mainclass, data=loaded_dict)
 
     print("maybe no exception!")
 except SyntaxError as e:
     print("exception!!!", e)
     sys.exit(e)
-    
+
 
 
 
@@ -728,32 +659,13 @@ def main(stdscr):
             case Window.templates:
                 sys.exit("template test")
 
-def view_apts(mainclass):
-    with open(mainclass.config.cursepath + "/todo", "r") as f:
-        for l in f:
-            print(l)
-    input()
 
 
 
 
-
-
-mainclass.todolist = load_todos(mainclass.config)
-
-#for day in loaded_dict["days"]:
- #   for slot in day["slots"]:
-  #      slot["subslots"] = []
-
-#with open('db.json', 'w') as fp:
- #   json.dump(loaded_dict, fp)
-
-#save_to_file(mainclass)
-#sys.exit("cool")
 
 
 selected_day = fetch_current_day(mainclass)
-#sys.exit(str(len(selected_day.slots)))
 
 wrapper(main)
 
