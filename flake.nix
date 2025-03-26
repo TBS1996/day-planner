@@ -14,21 +14,13 @@
         };
 
         python-env = pkgs.python311.withPackages (ps: with ps; [
-          # Built-ins, but still good to be explicit
-          json
-          dataclasses
-
-          # Required packages
           dacite
           desktop-notifier
-
-          # Optional (some distros separate this out)
-          curses
         ]);
-
       in {
         devShells.default = pkgs.mkShell {
           packages = [ python-env ];
+          nativeBuildInputs = [ pkgs.ncurses ]; # <- Add this line!
         };
       });
 }
